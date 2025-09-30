@@ -1,15 +1,12 @@
-# Домашнее задание к занятию «SQL. Часть 1» Шелухин Юрий
+# Домашнее задание к занятию «Index» Шелухин Юрий
 
 ### Задание 1.
 
-Одним запросом получите информацию о магазине, в котором обслуживается более 300 покупателей, и выведите в результат следующую информацию: 
-- фамилия и имя сотрудника из этого магазина;
-- город нахождения магазина;
-- количество пользователей, закреплённых в этом магазине.
+Напишите запрос к учебной базе данных, который вернёт процентное отношение общего размера всех индексов к общему размеру всех таблиц.
  
 ---
 
-#### Решение 1.
+#### Решение.
 
 1.1. Запустим MYSQL в контейнере Docker-compose.
 
@@ -17,130 +14,112 @@
 
 1.2. Выполним запрос по условию задания.
 
-`SELECT 
-    CONCAT(s.last_name, ' ', s.first_name) AS "Фамилия и Имя сотрудника",
-    c.city AS "Город",
-    COUNT(cu.customer_id) AS "Количество пользователей"
-FROM store st
-INNER JOIN staff s ON st.manager_staff_id = s.staff_id
-INNER JOIN address a ON a.address_id = st.address_id
-INNER JOIN city c ON c.city_id = a.city_id
-INNER JOIN customer cu ON cu.store_id = st.store_id
-GROUP BY 
-    s.staff_id, 
-    s.last_name, 
-    s.first_name, 
-    c.city,
-    st.store_id
-HAVING COUNT(cu.customer_id) > 300;` 
+`SSELECT 
+    ROUND((SUM(index_length) / SUM(data_length + index_length)) * 100, 2)
+    	AS "Процент индексов от всех таблиц",
+    CONCAT(ROUND(SUM(data_length) / 1024 / 1024, 2), ' MB') AS "Размер данных",
+    CONCAT(ROUND(SUM(index_length) / 1024 / 1024, 2), ' MB') AS "Размер индексов",
+    CONCAT(ROUND(SUM(data_length + index_length) / 1024 / 1024, 2), ' MB') AS "Общий размер данных"
+FROM information_schema.TABLES
+WHERE table_schema = 'sakila';` 
 
-<img src = "img/1-1.png" width = 60%>
+<img src = "img/1-2.png" width = 60%>
 
 ---
  
 
 ### Задание 2.
 
-Получите количество фильмов, продолжительность которых больше средней продолжительности всех фильмов..
+Выполните explain analyze следующего запроса:
+```sql
+select distinct concat(c.last_name, ' ', c.first_name), sum(p.amount) over (partition by c.customer_id, f.title)
+from payment p, rental r, customer c, inventory i, film f
+where date(p.payment_date) = '2005-07-30' and p.payment_date = r.rental_date and r.customer_id = c.customer_id and i.inventory_id = r.inventory_id
+```
+- перечислите узкие места;
+- оптимизируйте запрос: внесите корректировки по использованию операторов, при необходимости добавьте индексы.
 
 ---
-
-#### Решение 2.
-
-Выполним запрос для по условию задания.
-
-`SELECT COUNT(*) AS "Количество фильмов"
-FROM film
-WHERE length > (SELECT AVG(length) FROM film);`   
-
-<img src = "img/2-1.png" width = 60%>
-
----
-
-
-### Задание 3.
-
-Получите информацию, за какой месяц была получена наибольшая сумма платежей, и добавьте информацию по количеству аренд за этот месяц.
-
----
-
-#### Решение 3.
-
-Выполним запрос для по условию задания.
-
-`SELECT 
-    DATE_FORMAT(payment_date, '%m-%Y') AS payment_month,
-    SUM(amount) AS total_payment_amount,
-    COUNT(rental_id) AS rental_count
-FROM 
-    payment
-GROUP BY 
-    payment_month
-ORDER BY 
-    total_payment_amount DESC
-LIMIT 1;`
-
-<img src = "img/3-1.png" width = 60%>
-
----
-
-
-### Задание 4*.
-
-Посчитайте количество продаж, выполненных каждым продавцом. Добавьте вычисляемую колонку «Премия». Если количество продаж превышает 8000, то значение в колонке будет «Да», иначе должно быть значение «Нет»
-  
----
-
-#### Решение 4.
-
-Выполним запрос для по условию задания.
-
-`SELECT 
-    s.staff_id AS "ID продавца",
-    CONCAT(first_name, ' ', last_name) AS "Имя продавца",
-    COUNT(payment_id) AS "Количество продаж",
-    CASE 
-        WHEN COUNT(payment_id) > 8000 THEN 'Да'
-        ELSE 'Нет'
-    END AS "Премия"
-FROM 
-    staff s
-LEFT JOIN 
-    payment p ON s.staff_id = p.staff_id
-GROUP BY 
-    s.staff_id, s.first_name, s.last_name
-ORDER BY 
-    "Количество продаж" DESC;`
-
-<img src = "img/4-1.png" width = 60%>
-
----
-
-
-### Задание 5*.
-
-Найдите фильмы, которые ни разу не брали в аренду.
 
 #### Решение.
 
 Выполним запрос для по условию задания.
 
-`SELECT 
-    f.film_id,
-    f.title AS "Название",
-    f.description AS "Описание"
-FROM 
-    film f
-LEFT JOIN 
-    inventory i ON f.film_id = i.film_id
-LEFT JOIN 
-    rental r ON i.inventory_id = r.inventory_id
-WHERE 
-    r.rental_id IS NULL;`
+`EXPLAIN ANALYZE
+select distinct concat(c.last_name, ' ', c.first_name),
+	sum(p.amount) over (partition by c.customer_id, f.title)
+from payment p, rental r, customer c, inventory i, film f
+where date(p.payment_date) = '2005-07-30'
+	and p.payment_date = r.rental_date
+	and r.customer_id = c.customer_id
+	and i.inventory_id = r.inventory_id;`   
 
-<img src = "img/5-1.png" width = 60%>
+Получим плохие результаты:  
+(cost=2.5..2.5 rows=0) - оценка оптимизатора - Очень низкая стоимость (от начала до конца операции), 
+rows=0: Оптимизатор ожидал 0 строк - это указывает на проблему с оценкой кардинальности.  
+
+(actual time=4953..4953 rows=391 loops=1) - реальные показатели.  
+actual time=4953..4953: Операция заняла ~4.95 секунд, rows=391: Фактически вернулось 391 строка, loops=1: Операция выполнилась один раз.
+
+Проблемы: ожидалось 0 строк, получено - 391, 4.95 секунды для обработки всего 391 строки - это очень медленно.
+Временная таблица создает значительные накладные расходы.
+
+<img src = "img/2-1.png" width = 60%>
+
+В запросе присутствуют узкие места:  
+Отсутствие JOIN с film.	Таблица film не соединена с другими, создает декартово произведение	и резкий рост  обрабатываемых строк.  
+Использование функции DATE(p.payment_date) обходит индексы.  
+Полное сканирование таблицы (Seq Scan) вместо поиска по индексу.  
+DISTINCT пытается удалить дубликаты после расчета SUM() OVER, что создает	избыточные вычисления и необходимость во временной таблице.
+
+Создадим индексы
+`CREATE INDEX idx_payment_date ON payment(payment_date);
+CREATE INDEX idx_rental_rental_date ON rental(rental_date);
+CREATE INDEX idx_rental_customer_id ON rental(customer_id);
+CREATE INDEX idx_inventory_id ON inventory(inventory_id);
+CREATE INDEX idx_film_id ON film(film_id);`
+
+Модифицируем запрос и проанализируем его.   
+
+`EXPLAIN ANALYZE
+SELECT 
+    CONCAT(c.last_name, ' ', c.first_name) AS customer_name,
+    f.title AS film_title,
+    SUM(p.amount) AS total_payment
+FROM 
+    payment p
+INNER JOIN rental r ON p.rental_id = r.rental_id
+INNER JOIN customer c ON r.customer_id = c.customer_id
+INNER JOIN inventory i ON r.inventory_id = i.inventory_id
+INNER JOIN film f ON i.film_id = f.film_id
+WHERE 
+    p.payment_date >= '2005-07-30' AND p.payment_date < '2005-07-31'
+GROUP BY 
+    c.customer_id, c.last_name, c.first_name, f.film_id, f.title;`
+
+ Время выполнения сократилось в 45 раз.  
+
+ <img src = "img/2-2.png" width = 60%>
 
 ---
 
 
+### Задание 3*.
+
+Самостоятельно изучите, какие типы индексов используются в PostgreSQL. Перечислите те индексы, которые используются в PostgreSQL, а в MySQL — нет.
+
+---
+
+#### Решение.
+
+PostgreSQL предлагает богатый набор специализированных типов индексов, которые отсутствуют в MySQL и позволяют эффективно работать со сложными данными и специфичными запросами, например:  
+GIN - Generalized Inverted Index (Обобщенный обратный индекс). Полнотекстовый поиск, массивы, JSON-данные (jsonb), сложные типы данных.  
+GiST - Generalized Search Tree (Обобщенное дерево поиска). Геометрические данные, географические объекты, диапазоны, полнотекстовый поиск. Может быть расширен для поддержки пользовательских типов данных.  
+SP-GiST - Space-Partitioned GiST (Пространственно-разделенный GiST). Эффективная индексация неоднородных данных с пространственным разделением, таких как деревья квадрантов (quad-trees) или k-D деревья.  
+BRIN - Block Range Index (Индекс диапазонов блоков). Очень большие таблицы, где данные физически упорядочены (например, данные временных рядов). Занимает значительно меньше места, чем B-Tree.  
+Hash - Хэш-индекс. Точное сравнение, в современных версиях PostgreSQL безопасен для использования.
+
+MySQL в основном опирается на B-Tree (и его вариации) и R-Tree (для пространственных данных), но не имеет аналогов перечисленным выше специализированным индексам PostgreSQL.  
+
+---
 
